@@ -9,8 +9,12 @@ elrond_wasm::derive_imports!();
 #[elrond_wasm::contract]
 pub trait Adder {
     #[init]
-    fn init(&self, stake_token: TokenIdentifier) {
-        self.stake_token().set_if_empty(&stake_token);
+    fn init(&self, stake_token_opt: OptionalValue<TokenIdentifier>) {
+        let option = stake_token_opt.into_option();
+        if !option.is_none() {
+            let stake_token = option.unwrap();
+            self.stake_token().set_if_empty(&stake_token);
+        }
         self.origin_epoch().set_if_empty(&self.blockchain().get_block_epoch());
     }
 
@@ -34,10 +38,7 @@ pub trait Adder {
             reward_stats = self.reward_payment_info(&payment_token_name).get();
         }
 
-        let mut total_claimable_epochs = 0u64;
-        for address in self.staked_nfts().keys() {
-            total_claimable_epochs += self.get_total_payable_epochs(current_epoch, reward_stats.last_paid_epoch, &address);
-        }
+        let total_claimable_epochs = self.get_total_eligible_tickets(current_epoch, reward_stats.last_paid_epoch);
 
         let reward_per_epoch_per_nonce = &payment.amount / &BigUint::from(total_claimable_epochs);
         for address in self.staked_nfts().keys() {
@@ -125,7 +126,17 @@ pub trait Adder {
         self.claimable_rewards(&caller).clear();
     }
 
-    #[view(getTotalPayableEpochs)]
+
+    #[view(getTotalEligibleTickets)]
+    fn get_total_eligible_tickets(&self, current_epoch: u64, last_reward_epoch: u64) -> u64 {
+        let mut total_tickets = 0;
+        for address in self.staked_nfts().keys() {
+            total_tickets += self.get_total_payable_epochs(current_epoch, last_reward_epoch, &address);
+        }
+        return total_tickets;
+    }
+
+    #[view(getEligibleTickets)]
     fn get_total_payable_epochs(&self, current_epoch: u64, last_reward_epoch: u64, address: &ManagedAddress) -> u64 {
         if !self.staked_nfts().contains_key(address) {
             return 0u64;

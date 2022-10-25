@@ -10,11 +10,12 @@ elrond_wasm_node::wasm_endpoints! {
         claimReward
         depositReward
         getClaimableRewards
+        getEligibleTickets
         getOriginEpoch
         getRewardPaymentInfo
         getStakeToken
         getStakedNfts
-        getTotalPayableEpochs
+        getTotalEligibleTickets
         stake
         unstake
     )
