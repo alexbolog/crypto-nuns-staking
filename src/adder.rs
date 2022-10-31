@@ -19,6 +19,7 @@ pub trait Adder {
     }
 
     #[only_owner]
+    #[payable("*")]
     #[endpoint(depositReward)]
     fn deposit_reward(&self) -> BigUint {
         let current_epoch = self.blockchain().get_block_epoch();
