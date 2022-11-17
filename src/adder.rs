@@ -184,6 +184,7 @@ pub trait Adder {
         return self.reward_payment_info(&token).get();
     }
 
+    #[view(getFullStakeInfo)]
     #[storage_mapper("staked_nfts")]
     fn staked_nfts(&self) -> MapMapper<ManagedAddress, ManagedVec<StakedNftInfo>>;
 

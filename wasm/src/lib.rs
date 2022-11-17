@@ -11,6 +11,7 @@ elrond_wasm_node::wasm_endpoints! {
         depositReward
         getClaimableRewards
         getEligibleTickets
+        getFullStakeInfo
         getOriginEpoch
         getRewardPaymentInfo
         getStakeToken
