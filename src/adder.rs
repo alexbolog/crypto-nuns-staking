@@ -1,5 +1,5 @@
 #![no_std]
-#![feature(generic_associated_types)]
+// #![feature(generic_associated_types)]
 
 elrond_wasm::imports!();
 elrond_wasm::derive_imports!();
@@ -110,21 +110,23 @@ pub trait Adder {
         }
     }
 
+    fn unstake_all_to_address(&self, address: &ManagedAddress) {
+        let stake_token = self.stake_token().get();
+        let one = BigUint::from(1u32);
+        let staked_nfts = self.staked_nfts().remove(address).unwrap();
+        let mut nfts_to_send = ManagedVec::new();
+
+        for nft in staked_nfts.iter() {
+            nfts_to_send.push(EsdtTokenPayment::new(stake_token.clone(), nft.nonce, one.clone()));
+        }
+        self.send().direct_multi(address, &nfts_to_send);
+    }
+
     #[endpoint(claimReward)]
     fn claim_reward(&self) {
         let caller = self.blockchain().get_caller();
-        require!(!self.claimable_rewards(&caller).is_empty(), "no rewards to claim");
-        for reward in self.claimable_rewards(&caller).iter() {
-            self.send().direct(
-                &caller,
-                &reward.token_identifier,
-                reward.token_nonce,
-                &reward.amount
-            );
-        }
-        self.claimable_rewards(&caller).clear();
+        self.claim_reward_to_address(&caller);
     }
-
 
     #[view(getTotalEligibleTickets)]
     fn get_total_eligible_tickets(&self, current_epoch: u64, last_reward_epoch: u64) -> u64 {
@@ -180,6 +182,37 @@ pub trait Adder {
     #[view(getRewardPaymentInfo)]
     fn get_reward_payment_info(&self, token: EgldOrEsdtTokenIdentifier) -> RewardPaymentInfo<Self::Api> {
         return self.reward_payment_info(&token).get();
+    }
+
+
+    #[only_owner]
+    #[endpoint(endStaking)]
+    fn end_staking(&self) {
+        let mut gas_left = self.blockchain().get_gas_left();
+        for address in self.staked_nfts().keys() {
+            if gas_left < 5_000_000 {
+                break;
+            }
+
+            self.claim_reward_to_address(&address);
+            self.unstake_all_to_address(&address);
+
+
+            gas_left = self.blockchain().get_gas_left();
+        }
+    }
+
+    fn claim_reward_to_address(&self, address: &ManagedAddress) {
+        require!(!self.claimable_rewards(address).is_empty(), "no rewards to claim");
+        for reward in self.claimable_rewards(address).iter() {
+            self.send().direct(
+                address,
+                &reward.token_identifier,
+                reward.token_nonce,
+                &reward.amount
+            );
+        }
+        self.claimable_rewards(address).clear();
     }
 
     #[view(getFullStakeInfo)]

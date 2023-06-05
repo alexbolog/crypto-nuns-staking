@@ -1,4 +1,5 @@
 use cnuns_staking::*;
+use elrond_wasm::elrond_codec::multi_types::OptionalValue;
 use elrond_wasm::types::{Address, BoxedBytes, ManagedVec, ManagedBuffer};
 use elrond_wasm_debug::{
     managed_biguint, rust_biguint, testing_framework::*, num_bigint, managed_token_id, managed_address,
@@ -52,7 +53,7 @@ where
         .execute_tx(&owner_address, &staking_sc_wrapper, &rust_zero, |sc| {
             let token_identifier = managed_token_id!(STAKE_TOKEN);
             sc.init(
-                token_identifier  
+                OptionalValue::Some(token_identifier)  
             );
         })
         .assert_ok();
@@ -304,6 +305,37 @@ fn test_complex_split_rewards() {
     check_total_payable_epochs(&mut sc_setup, &caller3, 10, block_epoch, 125);
 }
 
+#[test]
+fn test_end_stake() {
+    let _ = DebugApi::dummy();
+    let mut sc_setup = setup_staking(cnuns_staking::contract_obj);
+
+    let caller1 = sc_setup.client_address.clone();
+    stake_nfts(&mut sc_setup, &caller1, &[1]);
+    
+    // distribute EGLD rewards in epoch 10
+    let mut block_epoch = 10u64;
+    sc_setup.blockchain_wrapper.set_block_epoch(block_epoch);
+
+    deposit_egld_rewards(&mut sc_setup, REWARD_AMOUNT / block_epoch);
+
+    // distribute ESDT rewards in epoch 20
+    block_epoch = 20u64;
+    sc_setup.blockchain_wrapper.set_block_epoch(block_epoch);
+
+    deposit_esdt_rewards(&mut sc_setup, REWARD_AMOUNT / block_epoch);
+    trigger_end_stake(&mut sc_setup);
+
+    sc_setup.blockchain_wrapper
+            .check_nft_balance::<ManagedBuffer<DebugApi>>(&caller1, &STAKE_TOKEN, 1, &rust_biguint!(1), Option::None);
+
+    sc_setup.blockchain_wrapper
+        .check_esdt_balance(&caller1, REWARD_TOKEN, &rust_biguint!(REWARD_AMOUNT));
+    sc_setup.blockchain_wrapper
+        .check_egld_balance(&caller1, &rust_biguint!(REWARD_AMOUNT));
+
+}
+
 /* Helper functions */
 fn check_origin_epoch<StakingObjBuilder>(
     setup: &mut StakingSetup<StakingObjBuilder>,
@@ -414,6 +446,20 @@ fn deposit_esdt_rewards<StakingObjBuilder>(
         .execute_esdt_transfer(&setup.owner_address, &setup.staking_sc_wrapper, &REWARD_TOKEN, 0u64, &reward_amount, |sc| {
             let reward_per_epoch_per_nonce = sc.deposit_reward();
             assert_eq!(managed_biguint!(expected_reward_per_unit), reward_per_epoch_per_nonce);
+        })
+        .assert_ok();
+}
+
+fn trigger_end_stake<StakingObjBuilder>(
+    setup: &mut StakingSetup<StakingObjBuilder>,
+) where
+    StakingObjBuilder: 'static + Copy + Fn() -> cnuns_staking::ContractObj<DebugApi>,
+{
+    let reward_amount = num_bigint::ToBigUint::to_biguint(&REWARD_AMOUNT).unwrap();
+    
+    setup.blockchain_wrapper
+        .execute_tx(&setup.owner_address, &setup.staking_sc_wrapper, &rust_biguint!(0), |sc| {
+            sc.end_staking();
         })
         .assert_ok();
 }
